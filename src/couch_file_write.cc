@@ -6,11 +6,11 @@
 #include <sys/types.h>
 #include <snappy.h>
 #include <libcouchstore/couch_db.h>
+#include <platform/crc32c.h>
 
 #include "rfc1321/global.h"
 #include "rfc1321/md5.h"
 #include "internal.h"
-#include "crc32.h"
 #include "util.h"
 
 static ssize_t raw_write(tree_file *file, const sized_buf *buf, cs_off_t pos)
@@ -53,7 +53,7 @@ couchstore_error_t write_header(tree_file *file, sized_buf *buf, cs_off_t *pos)
     cs_off_t write_pos = file->pos;
     ssize_t written;
     uint32_t size = htonl(buf->size + 4); //Len before header includes hash len.
-    uint32_t crc32 = htonl(hash_crc32(buf->buf, buf->size));
+    uint32_t crc32 = htonl(crc32c((uint8_t *)buf->buf, buf->size, 0));
     char headerbuf[1 + 4 + 4];
 
     if (write_pos % COUCH_BLOCK_SIZE != 0) {
@@ -90,7 +90,7 @@ int db_write_buf(tree_file *file, const sized_buf *buf, cs_off_t *pos, size_t *d
     cs_off_t end_pos = write_pos;
     ssize_t written;
     uint32_t size = htonl(buf->size | 0x80000000);
-    uint32_t crc32 = htonl(hash_crc32(buf->buf, buf->size));
+    uint32_t crc32 = htonl(crc32c((uint8_t *)buf->buf, buf->size, 0));
     char headerbuf[4 + 4];
 
     // Write the buffer's header:

@@ -5,11 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <snappy.h>
+#include <platform/crc32c.h>
 
 #include "internal.h"
 #include "iobuffer.h"
 #include "bitfield.h"
-#include "crc32.h"
 #include "util.h"
 
 
@@ -130,7 +130,7 @@ static int pread_bin_internal(tree_file *file,
         return COUCHSTORE_ERROR_ALLOC_FAIL;
     }
     err = read_skipping_prefixes(file, &pos, info.chunk_len, buf);
-    if (!err && info.crc32 && info.crc32 != hash_crc32(buf, info.chunk_len)) {
+    if (!err && info.crc32 && info.crc32 != crc32c((uint8_t *)buf, info.chunk_len, 0)) {
         err = COUCHSTORE_ERROR_CHECKSUM_FAIL;
     }
     if (err < 0) {
