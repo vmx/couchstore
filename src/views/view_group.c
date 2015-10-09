@@ -48,7 +48,7 @@ static couchstore_error_t read_spatial_info(view_group_info_t *info,
                                             FILE *in_stream,
                                             FILE *error_stream);
 
-static couchstore_error_t open_view_group_file(const char *path,
+couchstore_error_t open_view_group_file(const char *path,
                                                couchstore_open_flags open_flags,
                                                tree_file *file);
 
@@ -476,7 +476,7 @@ static void close_view_group_file(view_group_info_t *info)
 }
 
 
-static couchstore_error_t open_view_group_file(const char *path,
+couchstore_error_t open_view_group_file(const char *path,
                                                couchstore_open_flags open_flags,
                                                tree_file *file)
 {

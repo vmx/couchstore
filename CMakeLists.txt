@@ -73,6 +73,10 @@ TARGET_LINK_LIBRARIES(couch_dbinfo couchstore platform)
 ADD_EXECUTABLE(couch_compact src/compactor.c)
 TARGET_LINK_LIBRARIES(couch_compact couchstore)
 
+ADD_EXECUTABLE(couch_viewdump src/viewdump.c ${COUCHSTORE_SOURCES})
+SET_TARGET_PROPERTIES(couch_viewdump PROPERTIES COMPILE_FLAGS "-DLIBCOUCHSTORE_NO_VISIBILITY=1")
+TARGET_LINK_LIBRARIES(couch_viewdump ${COUCHSTORE_LIBRARIES})
+
 ADD_EXECUTABLE(couch_view_file_merger src/views/bin/couch_view_file_merger.c src/views/bin/util.c)
 TARGET_LINK_LIBRARIES(couch_view_file_merger couchstore)
 
