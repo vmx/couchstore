@@ -33,19 +33,24 @@
 #include <time.h>
 #include <v8.h>
 
+#define V8_VER_4_8_API 1
 
 class MapReduceError;
 
 typedef std::list<mapreduce_json_t>                    json_results_list_t;
 typedef std::list<mapreduce_kv_t>                      kv_list_int_t;
-#ifdef V8_POST_3_19_API
+#ifndef V8_PRE_3_19_API
 typedef std::vector< v8::Persistent<v8::Function>* >   function_vector_t;
 #else
 typedef std::vector< v8::Persistent<v8::Function> >    function_vector_t;
 #endif
 
 typedef struct {
+#ifdef V8_VER_4_8_API
+    v8::Local<v8::Context>      jsContext;
+#else
     v8::Persistent<v8::Context> jsContext;
+#endif
     v8::Isolate                 *isolate;
     function_vector_t           *functions;
     kv_list_int_t               *kvs;
