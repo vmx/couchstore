@@ -22,7 +22,10 @@
 #include <cstring>
 #include <stdlib.h>
 #include <v8.h>
+#include <libplatform/libplatform.h>
 
+#undef V8_POST_3_19_API
+#undef V8_PRE_3_19_API
 
 using namespace v8;
 
@@ -94,16 +97,19 @@ static const char *BASE64_FUNCTION_STRING =
 
 
 
-#ifndef V8_PRE_3_19_API
+#ifdef V8_POST_3_19_API
 static Local<Context> createJsContext();
 static void emit(const v8::FunctionCallbackInfo<Value> &args);
-#else
+#elif V8_VER_4_8_API
+static Local<Context> createJsContext();
+static void emit(const v8::FunctionCallbackInfo<Value> &args);
+#elif V8_PRE_3_19_API
 static Persistent<Context> createJsContext();
 static Handle<Value> emit(const Arguments &args);
 #endif
 
 static void doInitContext(mapreduce_ctx_t *ctx);
-static Handle<Function> compileFunction(const std::string &function);
+static Handle<Function> compileFunction(const std::string &function, Local<Context> jsContext);
 static std::string exceptionString(const TryCatch &tryCatch);
 static void loadFunctions(mapreduce_ctx_t *ctx,
                           const std::list<std::string> &function_sources);
@@ -124,16 +130,20 @@ void initContext(mapreduce_ctx_t *ctx,
 
     try {
         Locker locker(ctx->isolate);
-        Isolate::Scope isolateScope(ctx->isolate);
 #ifdef V8_POST_3_19_API
+        Isolate::Scope isolateScope(ctx->isolate);
         HandleScope handleScope(ctx->isolate);
         Context::Scope contextScope(ctx->isolate, ctx->jsContext);
 #elif  V8_PRE_3_19_API
+        Isolate::Scope isolateScope(ctx->isolate);
         HandleScope handleScope;
         Context::Scope contextScope(ctx->jsContext);
 #elif  V8_VER_4_8_API
-        HandleScope handleScope(ctx->isolate);
-        Context::Scope contextScope(ctx->jsContext);
+        Isolate::Scope isolate_scope(ctx->isolate);
+        HandleScope handle_scope(ctx->isolate);
+        v8::Local<v8::Context> jsContext =
+            v8::Local<v8::Context>::New(ctx->isolate, ctx->jsContext);
+        Context::Scope context_scope(jsContext);
 #endif
 
         loadFunctions(ctx, function_sources);
@@ -156,8 +166,10 @@ void destroyContext(mapreduce_ctx_t *ctx)
         HandleScope handleScope;
         Context::Scope contextScope(ctx->jsContext);
 #elif  V8_VER_4_8_API
-        HandleScope handleScope(ctx->isolate);
-        Context::Scope contextScope(ctx->jsContext);
+        HandleScope handle_scope(ctx->isolate);
+        v8::Local<v8::Context> jsContext =
+            v8::Local<v8::Context>::New(ctx->isolate, ctx->jsContext);
+        Context::Scope context_scope(jsContext);
 #endif
 
         for (unsigned int i = 0; i < ctx->functions->size(); ++i) {
@@ -192,13 +204,21 @@ void destroyContext(mapreduce_ctx_t *ctx)
 #endif
         delete isoData;
 
-#ifndef V8_VER_4_8_API
+#ifdef V8_VER_4_8_API
+        ctx->jsContext.Reset();
+#elif
         ctx->jsContext.Dispose();
-#endif
         ctx->jsContext.Clear();
+#endif
     }
 
-    ctx->isolate->Dispose();
+    // XXX vmx 2015-10-28: somehow this call leads to a segfault
+    //ctx->isolate->Dispose();
+
+#ifdef V8_VER_4_8_API
+    V8::Dispose();
+    V8::ShutdownPlatform();
+#endif
 }
 
 #ifdef V8_VER_4_8_API
@@ -215,6 +235,12 @@ class MapReduceBufferAllocator : public ArrayBuffer::Allocator {
 
 static void doInitContext(mapreduce_ctx_t *ctx)
 {
+V8::InitializeICU();
+  //V8::InitializeExternalStartupData("mapreduce");
+ Platform* platform = platform::CreateDefaultPlatform();
+ V8::InitializePlatform(platform);
+   V8::Initialize();
+
 #ifdef V8_VER_4_8_API
     MapReduceBufferAllocator mapReduceBufferAllocator;
     Isolate::CreateParams createParams;
@@ -224,54 +250,52 @@ static void doInitContext(mapreduce_ctx_t *ctx)
     ctx->isolate = Isolate::New();
 #endif
     Locker locker(ctx->isolate);
-    Isolate::Scope isolateScope(ctx->isolate);
 
 #ifdef V8_POST_3_19_API
+    Isolate::Scope isolateScope(ctx->isolate);
     HandleScope handleScope(ctx->isolate);
     ctx->jsContext.Reset(ctx->isolate, createJsContext());
     Local<Context> context = Local<Context>::New(ctx->isolate, ctx->jsContext);
     Context::Scope contextScope(context);
     Handle<Object> jsonObject = Local<Object>::Cast(context->Global()->Get(String::New("JSON")));
 #elif  V8_PRE_3_19_API
+    Isolate::Scope isolateScope(ctx->isolate);
     HandleScope handleScope;
     ctx->jsContext = createJsContext();
     Context::Scope contextScope(ctx->jsContext);
     Handle<Object> jsonObject = Local<Object>::Cast(ctx->jsContext->Global()->Get(String::New("JSON")));
 #elif  V8_VER_4_8_API
-    HandleScope handleScope(ctx->isolate);
-    ctx->jsContext = createJsContext();
-    Local<Context> context = Local<Context>::New(ctx->isolate, ctx->jsContext);
-    Context::Scope contextScope(context);
+    Isolate::Scope isolate_scope(ctx->isolate);
+    HandleScope handle_scope(ctx->isolate);
+    //Local<Context> jsContext = createJsContext();
+    ctx->jsContext.Reset(ctx->isolate, createJsContext());
+    v8::Local<v8::Context> jsContext =
+            v8::Local<v8::Context>::New(ctx->isolate, ctx->jsContext);
+    Context::Scope context_scope(jsContext);
     Local<String> jsonString = String::NewFromUtf8(ctx->isolate, "JSON", NewStringType::kNormal).ToLocalChecked();
-    Local<Value> jsonObject_val;
-    if(!context->Global()->Get(context, jsonString).ToLocal(&jsonObject_val)) return;
-    Local<Object> jsonObject = Local<Object>::Cast(jsonObject_val);
+    Handle<Object> jsonObject = Local<Object>::Cast(jsContext->Global()->Get(jsonString));
 #endif
 
 #ifdef V8_VER_4_8_API
     Local<String> parseFunString = String::NewFromUtf8(ctx->isolate, "parse", NewStringType::kNormal).ToLocalChecked();
-    Local<Value> parseFun_val;
-    if(!jsonObject->Get(context, parseFunString).ToLocal(&parseFun_val)) return;
-    Local<Function> parseFun = Local<Function>::Cast(parseFun_val);
+    Handle<Function> parseFun = Local<Function>::Cast(jsonObject->Get(parseFunString));
 
     Local<String> stringifyFunString = String::NewFromUtf8(ctx->isolate, "stringify", NewStringType::kNormal).ToLocalChecked();
-    Local<Value> stringifyFun_val;
-    if(!jsonObject->Get(context, stringifyFunString).ToLocal(&stringifyFun_val)) return;
-    Local<Function> stringifyFun = Local<Function>::Cast(stringifyFun_val);
+    Handle<Function> stringifyFun = Local<Function>::Cast(jsonObject->Get( stringifyFunString));
 #else
     Handle<Function> parseFun = Local<Function>::Cast(jsonObject->Get(String::New("parse")));
     Handle<Function> stringifyFun = Local<Function>::Cast(jsonObject->Get(String::New("stringify")));
 #endif
 
     isolate_data_t *isoData = new isolate_data_t();
-#ifndef V8_PRE_3_19_API
-    isoData->jsonObject.Reset(ctx->isolate, jsonObject);
-    isoData->jsonParseFun.Reset(ctx->isolate, parseFun);
-    isoData->stringifyFun.Reset(ctx->isolate, stringifyFun);
-#else
+#ifdef V8_PRE_3_19_API
     isoData->jsonObject = Persistent<Object>::New(jsonObject);
     isoData->jsonParseFun = Persistent<Function>::New(parseFun);
     isoData->stringifyFun = Persistent<Function>::New(stringifyFun);
+#else
+    isoData->jsonObject.Reset(ctx->isolate, jsonObject);
+    isoData->jsonParseFun.Reset(ctx->isolate, parseFun);
+    isoData->stringifyFun.Reset(ctx->isolate, stringifyFun);
 #endif
     isoData->ctx = ctx;
 
@@ -296,7 +320,7 @@ static Persistent<Context> createJsContext()
 static Local<Context> createJsContext()
 {
     Isolate *isolate = Isolate::GetCurrent();
-    EscapableHandleScope handleScope(isolate);
+    HandleScope handleScope(isolate);
 #endif
 
     Handle<ObjectTemplate> global = ObjectTemplate::New();
@@ -308,16 +332,18 @@ static Local<Context> createJsContext()
 
 #ifdef V8_POST_3_19_API
     Handle<Context> context = Context::New(Isolate::GetCurrent(), NULL, global);
+    Context::Scope contexScope(context);
 #elif  V8_PRE_3_19_API
     Persistent<Context> context = Context::New(NULL, global);
+    Context::Scope contexScope(context);
 #elif  V8_VER_4_8_API
-    Handle<Context> context = Context::New(isolate, NULL, global);
+    Local<Context> context = Context::New(isolate, NULL, global);
+    Context::Scope context_scope(context);
 #endif
-    Context::Scope contextScope(context);
 
-    Handle<Function> sumFun = compileFunction(SUM_FUNCTION_STRING);
-    Handle<Function> decodeBase64Fun = compileFunction(BASE64_FUNCTION_STRING);
-    Handle<Function> dateToArrayFun = compileFunction(DATE_FUNCTION_STRING);
+    Handle<Function> sumFun = compileFunction(SUM_FUNCTION_STRING, context);
+    Handle<Function> decodeBase64Fun = compileFunction(BASE64_FUNCTION_STRING, context);
+    Handle<Function> dateToArrayFun = compileFunction(DATE_FUNCTION_STRING, context);
 #ifdef V8_VER_4_8_API
     context->Global()->Set(String::NewFromUtf8(isolate, "sum", NewStringType::kNormal).ToLocalChecked(), sumFun);
     context->Global()->Set(String::NewFromUtf8(isolate, "decodeBase64", NewStringType::kNormal).ToLocalChecked(), decodeBase64Fun);
@@ -329,11 +355,12 @@ static Local<Context> createJsContext()
 #endif
 
 #ifdef V8_POST_3_19_API
-    return handleScope.Close(context);
+    return handle_scope.Close(context);
 #elif  V8_PRE_3_19_API
     return context;
 #elif  V8_VER_4_8_API
-    return handleScope.Escape(context);
+    //return handle_scope.Escape(context);
+    return context;
 #endif
 }
 
@@ -350,10 +377,12 @@ void mapDoc(mapreduce_ctx_t *ctx,
     Context::Scope contextScope(ctx->isolate, ctx->jsContext);
 #elif  V8_PRE_3_19_API
     HandleScope handleScope;
-    Context::Scope contextScope(ctx->jsContext);
+    Context::Scope context_scope(ctx->jsContext);
 #elif  V8_VER_4_8_API
-    HandleScope handleScope(ctx->isolate);
-    Context::Scope contextScope(ctx->jsContext);
+    HandleScope handle_scope(ctx->isolate);
+    Local<Context> jsContext =
+        Local<Context>::New(ctx->isolate, ctx->jsContext);
+    Context::Scope context_scope(jsContext);
 #endif
     Handle<Value> docObject = jsonParse(doc);
     Handle<Value> metaObject = jsonParse(meta);
@@ -432,8 +461,10 @@ json_results_list_t runReduce(mapreduce_ctx_t *ctx,
     HandleScope handleScope;
     Context::Scope contextScope(ctx->jsContext);
 #elif  V8_VER_4_8_API
-    HandleScope handleScope(ctx->isolate);
-    Context::Scope contextScope(ctx->jsContext);
+    HandleScope handle_scope(ctx->isolate);
+    Local<Context> jsContext =
+        Local<Context>::New(ctx->isolate, ctx->jsContext);
+    Context::Scope context_scope(jsContext);
 #endif
     Handle<Array> keysArray = jsonListToJsArray(keys);
     Handle<Array> valuesArray = jsonListToJsArray(values);
@@ -495,8 +526,10 @@ mapreduce_json_t runReduce(mapreduce_ctx_t *ctx,
     HandleScope handleScope;
     Context::Scope contextScope(ctx->jsContext);
 #elif  V8_VER_4_8_API
-    HandleScope handleScope(ctx->isolate);
-    Context::Scope contextScope(ctx->jsContext);
+    HandleScope handle_scope(ctx->isolate);
+    Local<Context> jsContext =
+        Local<Context>::New(ctx->isolate, ctx->jsContext);
+    Context::Scope context_scope(jsContext);
 #endif
 
     reduceFunNum -= 1;
@@ -550,8 +583,10 @@ mapreduce_json_t runRereduce(mapreduce_ctx_t *ctx,
     HandleScope handleScope;
     Context::Scope contextScope(ctx->jsContext);
 #elif  V8_VER_4_8_API
-    HandleScope handleScope(ctx->isolate);
-    Context::Scope contextScope(ctx->jsContext);
+    HandleScope handle_scope(ctx->isolate);
+    Local<Context> jsContext =
+        Local<Context>::New(ctx->isolate, ctx->jsContext);
+    Context::Scope context_scope(jsContext);
 #endif
 
     reduceFunNum -= 1;
@@ -622,7 +657,7 @@ static void freeJsonListEntries(json_results_list_t &list)
 }
 
 
-static Handle<Function> compileFunction(const std::string &funSource)
+static Handle<Function> compileFunction(const std::string &funSource, Local<Context> jsContext)
 {
 #ifdef V8_POST_3_19_API
     HandleScope handleScope(Isolate::GetCurrent());
@@ -630,16 +665,16 @@ static Handle<Function> compileFunction(const std::string &funSource)
     HandleScope handleScope;
 #elif  V8_VER_4_8_API
     Isolate *isolate = Isolate::GetCurrent();
-    EscapableHandleScope handleScope(isolate);
+    HandleScope handle_scope(isolate);
 #endif
     TryCatch trycatch;
 #ifdef V8_VER_4_8_API
-    Handle<String> source = String::NewFromUtf8(isolate, funSource.data(), NewStringType::kNormal, funSource.length()).ToLocalChecked();
+    Local<String> source = String::NewFromUtf8(isolate, funSource.data(), NewStringType::kNormal, funSource.length()).ToLocalChecked();
+    Handle<Script> script = Script::Compile(jsContext, source).ToLocalChecked();
 #else
     Handle<String> source = String::New(funSource.data(), funSource.length());
-#endif
     Handle<Script> script = Script::Compile(source);
-
+#endif
     if (script.IsEmpty()) {
         throw MapReduceError(MAPREDUCE_SYNTAX_ERROR, exceptionString(trycatch));
     }
@@ -655,7 +690,8 @@ static Handle<Function> compileFunction(const std::string &funSource)
                              std::string("Invalid function: ") + funSource.c_str());
     }
 #ifdef V8_VER_4_8_API
-    return handleScope.Escape(Handle<Function>::Cast(result));
+//XXX vmx 2015-10-28: check if this is the right thing
+    return Handle<Function>::Cast(result);
 #else
     return handleScope.Close(Handle<Function>::Cast(result));
 #endif
@@ -664,10 +700,12 @@ static Handle<Function> compileFunction(const std::string &funSource)
 
 static std::string exceptionString(const TryCatch &tryCatch)
 {
-#ifndef V8_PRE_3_19_API
+#ifdef V8_POST_3_19_API
     HandleScope handleScope(Isolate::GetCurrent());
-#else
+#elif  V8_PRE_3_19_API
     HandleScope handleScope;
+#elif  V8_VER_4_8_API
+    HandleScope handle_scope(Isolate::GetCurrent());
 #endif
     String::Utf8Value exception(tryCatch.Exception());
     const char *exceptionString = (*exception);
@@ -686,18 +724,24 @@ static std::string exceptionString(const TryCatch &tryCatch)
 static void loadFunctions(mapreduce_ctx_t *ctx,
                           const std::list<std::string> &function_sources)
 {
-#ifndef V8_PRE_3_19_API
-    HandleScope handleScope(ctx->isolate);
-#else
+#ifdef V8_POST_3_19_API
+    HandleScope handleScope(Isolate::GetCurrent());
+#elif  V8_PRE_3_19_API
     HandleScope handleScope;
+#elif  V8_VER_4_8_API
+    HandleScope handle_scope(Isolate::GetCurrent());
 #endif
 
     ctx->functions = new function_vector_t();
 
     std::list<std::string>::const_iterator it = function_sources.begin();
 
+    Local<Context> jsContext =
+        Local<Context>::New(ctx->isolate, ctx->jsContext);
+
     for ( ; it != function_sources.end(); ++it) {
-        Handle<Function> fun = compileFunction(*it);
+      //Handle<Function> fun = compileFunction(*it, ctx->jsContext);
+      Handle<Function> fun = compileFunction(*it, jsContext);
 #ifndef V8_PRE_3_19_API
         Persistent<Function> *perFn = new Persistent<Function>();
         perFn->Reset(ctx->isolate, fun);
@@ -811,20 +855,22 @@ static inline mapreduce_json_t jsonStringify(const Handle<Value> &obj)
 static inline Handle<Value> jsonParse(const mapreduce_json_t &thing)
 {
     isolate_data_t *isoData = getIsolateData();
-#ifndef V8_PRE_3_19_API
-    Isolate *isolate = Isolate::GetCurrent();
-#endif
 #ifdef V8_VER_4_8_API
-    Handle<Value> args[] = { String::NewFromUtf8(isolate, thing.json, NewStringType::kNormal, thing.length).ToLocalChecked() };
+    Handle<Value> args[] = { String::NewFromUtf8(Isolate::GetCurrent(), thing.json, NewStringType::kNormal, thing.length).ToLocalChecked() };
+    Local<Function> jsonParseFun = Local<Function>::New(Isolate::GetCurrent(), isoData->jsonParseFun);
+    Local<Object> jsonObject = Local<Object>::New(Isolate::GetCurrent(), isoData->jsonObject);
+    Handle<Value> result = jsonParseFun->Call(jsonObject, 1, args);
 #else
     Handle<Value> args[] = { String::New(thing.json, thing.length) };
 #endif
+
     TryCatch trycatch;
-#ifndef V8_PRE_3_19_API
-    Local<Function> jsonParseFun = Local<Function>::New(isolate, isoData->jsonParseFun);
-    Local<Object> jsonObject = Local<Object>::New(isolate, isoData->jsonObject);
+
+#ifdef V8_POST_3_19_API
+    Local<Function> jsonParseFun = Local<Function>::New(Isolate::GetCurrent(), isoData->jsonParseFun);
+    Local<Object> jsonObject = Local<Object>::New(Isolate::GetCurrent(), isoData->jsonObject);
     Handle<Value> result = jsonParseFun->Call(jsonObject, 1, args);
-#else
+#elif V8_PRE_3_19_API
     Handle<Value> result = isoData->jsonParseFun->Call(isoData->jsonObject, 1, args);
 #endif
 

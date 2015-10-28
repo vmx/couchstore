@@ -47,7 +47,8 @@ typedef std::vector< v8::Persistent<v8::Function> >    function_vector_t;
 
 typedef struct {
 #ifdef V8_VER_4_8_API
-    v8::Local<v8::Context>      jsContext;
+  //v8::Local<v8::Context>      jsContext;
+    v8::Global<v8::Context>     jsContext;
 #else
     v8::Persistent<v8::Context> jsContext;
 #endif
