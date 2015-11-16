@@ -60,12 +60,15 @@ static void test_bad_syntax_functions(void)
     void *context = NULL;
     char *error_msg = NULL;
     mapreduce_error_t ret;
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     const char *functions[] = {
         "function(doc, meta) { emit(meta.id, null); }",
         "function(doc, meta { emit(doc.field, meta.id); }"
     };
 
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     ret = mapreduce_start_map_context(functions, 2, &context, &error_msg);
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     cb_assert(ret == MAPREDUCE_SYNTAX_ERROR);
     cb_assert(error_msg != NULL);
     cb_assert(strlen(error_msg) > 0);
@@ -463,11 +466,14 @@ static void test_timeout(void)
     };
     mapreduce_map_result_list_t *result = NULL;
 
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     ret = mapreduce_start_map_context(functions, 1, &context, &error_msg);
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     cb_assert(ret == MAPREDUCE_SUCCESS);
     cb_assert(error_msg == NULL);
     cb_assert(context != NULL);
 
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     ret = mapreduce_map(context, &doc1, &meta1, &result);
     cb_assert(ret == MAPREDUCE_TIMEOUT);
     cb_assert(result == NULL);
@@ -490,7 +496,9 @@ static void test_timeout(void)
                   (sizeof("2") - 1)) == 0);
 
     mapreduce_free_map_result_list(result);
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     mapreduce_free_context(context);
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
 }
 
 void map_tests(void)
@@ -500,15 +508,23 @@ void map_tests(void)
     fprintf(stderr, "Running map tests\n");
 
     mapreduce_set_timeout(1);
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     test_timeout();
 
-    for (i = 0; i < 100; ++i) {
-        test_bad_syntax_functions();
-        test_runtime_exception();
-        test_runtime_error();
-        test_map_no_emit();
-        test_map_single_emit();
-        test_map_multiple_emits();
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+    for (i = 0; i < 1; ++i) {
+        //test_bad_syntax_functions();
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+        //test_runtime_exception();
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+        //test_runtime_error();
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+        //test_map_no_emit();
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+        //test_map_single_emit();
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
+        //test_map_multiple_emits();
+    fprintf(stderr, "%s %s %d\n", __FILE__, __FUNCTION__, __LINE__);
     }
 
     test_timeout();

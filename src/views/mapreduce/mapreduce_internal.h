@@ -33,6 +33,7 @@
 #include <time.h>
 #include <v8.h>
 
+#define V8_VER_4_8_API 1
 
 class MapReduceError;
 
@@ -43,6 +44,7 @@ typedef std::vector< v8::Persistent<v8::Function>* >   function_vector_t;
 typedef struct {
     v8::Persistent<v8::Context> jsContext;
     v8::Isolate                 *isolate;
+    v8::Platform		*platform;
     function_vector_t           *functions;
     kv_list_int_t               *kvs;
     volatile time_t             taskStartTime;

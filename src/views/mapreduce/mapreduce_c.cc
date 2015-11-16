@@ -263,9 +263,9 @@ void mapreduce_free_context(void *context)
     if (context != NULL) {
         mapreduce_ctx_t *ctx = (mapreduce_ctx_t *) context;
 
-        unregister_ctx(ctx);
+        //unregister_ctx(ctx);
         destroyContext(ctx);
-        delete ctx;
+        //delete ctx;
     }
 }
 
