@@ -116,6 +116,14 @@ static void freeJsonListEntries(json_results_list_t &list);
 static inline Handle<Array> jsonListToJsArray(const mapreduce_json_list_t &list);
 
 
+void initV8()
+{
+    V8::InitializeICU();
+    v8::Platform* platform = platform::CreateDefaultPlatform();
+    V8::InitializePlatform(platform);
+    V8::Initialize();
+}
+
 void initContext(mapreduce_ctx_t *ctx,
                  const std::list<std::string> &function_sources)
 {
@@ -141,7 +149,7 @@ void destroyContext(mapreduce_ctx_t *ctx)
 {
     {
         Locker locker(ctx->isolate);
-        Isolate::Scope isolateScope(ctx->isolate);
+        Isolate::Scope isolate_scope(ctx->isolate);
         HandleScope handle_scope(ctx->isolate);
         v8::Local<v8::Context> jsContext =
             v8::Local<v8::Context>::New(ctx->isolate, ctx->jsContext);
@@ -170,9 +178,9 @@ void destroyContext(mapreduce_ctx_t *ctx)
     }
 
     // XXX vmx 2015-10-28: somehow this call leads to a segfault
-    ctx->isolate->Dispose();
+    //ctx->isolate->Dispose();
 
-    V8::Dispose();
+    //V8::Dispose();
     //V8::ShutdownPlatform();
     //delete ctx->platform;
 }
@@ -186,22 +194,22 @@ class MapReduceBufferAllocator : public ArrayBuffer::Allocator {
   virtual void* AllocateUninitialized(size_t length) { return malloc(length); }
   virtual void Free(void* data, size_t) { free(data); }
 };
-    Isolate::CreateParams createParams;
 
 static void doInitContext(mapreduce_ctx_t *ctx)
 {
-    V8::InitializeICU();
-    ctx->platform = platform::CreateDefaultPlatform();
-    V8::InitializePlatform(ctx->platform);
-    V8::Initialize();
+//    V8::InitializeICU();
+//    ctx->platform = platform::CreateDefaultPlatform();
+//    V8::InitializePlatform(ctx->platform);
+//    V8::Initialize();
 
     MapReduceBufferAllocator mapReduceBufferAllocator;
+    Isolate::CreateParams createParams;
     createParams.array_buffer_allocator = &mapReduceBufferAllocator;
     ctx->isolate = Isolate::New(createParams);
     Locker locker(ctx->isolate);
-    Isolate::Scope isolateScope(ctx->isolate);
+    Isolate::Scope isolate_scope(ctx->isolate);
 
-    HandleScope handleScope(ctx->isolate);
+    HandleScope handle_scope(ctx->isolate);
     ctx->jsContext.Reset(ctx->isolate, createJsContext());
     v8::Local<v8::Context> jsContext =
             v8::Local<v8::Context>::New(ctx->isolate, ctx->jsContext);
@@ -228,7 +236,7 @@ static void doInitContext(mapreduce_ctx_t *ctx)
 static Local<Context> createJsContext()
 {
     Isolate *isolate = Isolate::GetCurrent();
-    HandleScope handleScope(isolate);
+    HandleScope handle_scope(isolate);
 
     Handle<ObjectTemplate> global = ObjectTemplate::New();
     global->Set(String::NewFromUtf8(isolate, "emit", NewStringType::kNormal).ToLocalChecked(), FunctionTemplate::New(isolate, emit));
@@ -259,7 +267,7 @@ void mapDoc(mapreduce_ctx_t *ctx,
             mapreduce_map_result_list_t *results)
 {
     Locker locker(ctx->isolate);
-    Isolate::Scope isolateScope(ctx->isolate);
+    Isolate::Scope isolate_scope(ctx->isolate);
     HandleScope handle_scope(ctx->isolate);
     Local<Context> jsContext =
         Local<Context>::New(ctx->isolate, ctx->jsContext);

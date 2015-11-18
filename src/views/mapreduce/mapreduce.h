@@ -75,6 +75,8 @@ extern "C" {
         int                    length;
     } mapreduce_map_result_list_t;
 
+    LIBMAPREDUCE_API
+    void initV8();
 
 
     /**

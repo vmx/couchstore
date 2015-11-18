@@ -25,7 +25,9 @@ void mapreduce_tests()
 {
     fprintf(stderr, "\n\nRunning mapreduce tests\n\n");
 
+    initV8();
+
     map_tests();
-    //reduce_tests();
+    reduce_tests();
     builtin_tests();
 }

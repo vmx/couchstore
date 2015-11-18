@@ -192,6 +192,8 @@ SET_TARGET_PROPERTIES(couchstore_testapp PROPERTIES
 
 TARGET_LINK_LIBRARIES(couchstore_testapp "/home/vmx/src/c/v8/v8/out/native/obj.target/tools/gyp/libv8_libplatform.a")
 TARGET_LINK_LIBRARIES(couchstore_testapp "/home/vmx/src/c/v8/v8/out/native/obj.target/tools/gyp/libv8_libbase.a")
+TARGET_LINK_LIBRARIES(couchstore_testapp "/home/vmx/src/c/v8/v8/out/native/obj.target/third_party/icu/libicudata.a")
+TARGET_LINK_LIBRARIES(couchstore_testapp "/home/vmx/src/c/v8/v8/out/native/obj.target/third_party/icu/libicui18n.so")
 #TARGET_LINK_LIBRARIES(couchstore_testapp "/home/vmx/src/c/v8/v8/out/native/obj.target/tools/gyp/")
 ADD_TEST(couchstore-testapp couchstore_testapp)
 
