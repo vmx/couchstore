@@ -217,7 +217,9 @@ static file_merger_error_t do_merge_files(file_merger_ctx_t *ctx)
         }
 
         if (ctx->dest_file) {
-            ret = (*ctx->write_record)(ctx->dest_file, records[0]->data, ctx->user_ctx);
+            ret = (*ctx->write_record)(ctx->dest_file, records[0]->data,
+                                       ctx->sorted_vector.count == 0,
+                                       ctx->user_ctx);
             if (ret != FILE_MERGER_SUCCESS) {
                 free_all_records(ctx, records, 0, n);
                 return ret;

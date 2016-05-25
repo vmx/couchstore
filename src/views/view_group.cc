@@ -21,6 +21,8 @@
 #include "config.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include <snappy-c.h>
 #include "view_group.h"
 #include "reducers.h"
 #include "reductions.h"
@@ -72,7 +74,7 @@ static couchstore_error_t build_view_btree(const char *source_file,
 static void close_view_group_file(view_group_info_t *info);
 
 static int read_record(FILE *f, arena *a, sized_buf *k, sized_buf *v,
-                                                        uint8_t *op);
+                       uint8_t *op, view_file_compression_buffer_t *filebuf);
 
 extern "C" {
     int view_btree_cmp(const sized_buf *key1, const sized_buf *key2);
@@ -615,34 +617,39 @@ out:
  * src/btree_modify.cc.
  */
 static int read_record(FILE *f, arena *a, sized_buf *k, sized_buf *v,
-                                                        uint8_t *op)
+                       uint8_t *op, view_file_compression_buffer_t *filebuf)
 {
     uint16_t klen;
     uint8_t oplen = 0;
     uint32_t vlen, len;
 
-    if (fread(&len, sizeof(len), 1, f) != 1) {
-        if (feof(f)) {
-            return 0;
-        } else {
-            return COUCHSTORE_ERROR_READ;
+    /* As the buffer was fully read, free it */
+    if (filebuf->buffer.size != 0 &&
+            filebuf->offset == filebuf->buffer.size) {
+        free_file_buffer(&filebuf);
+    }
+
+    /* As the buffer is empty, fill it up again */
+    if (filebuf->buffer.size == 0) {
+        int ret = fill_file_buffer(&filebuf);
+        /* Error or file was fully read */
+        if (ret < 1) {
+            return ret;
         }
     }
+
+    assert(filebuf->buffer.size > 0);
+
+    read_from_file_buffer(&len, sizeof(len), &filebuf);
 
     /* For incremental update, read optype */
     if (op != NULL) {
-        if (fread(op, sizeof(uint8_t), 1, f) != 1) {
-            return COUCHSTORE_ERROR_READ;
-        }
-
+        read_from_file_buffer(op, sizeof(uint8_t), &filebuf);
         oplen = 1;
     }
-
-    if (fread(&klen, sizeof(klen), 1, f) != 1) {
-        return COUCHSTORE_ERROR_READ;
-    }
-
+    read_from_file_buffer(&klen, sizeof(klen), &filebuf);
     klen = ntohs(klen);
+
     vlen = len - sizeof(klen) - klen - oplen;
 
     k->size = klen;
@@ -662,13 +669,8 @@ static int read_record(FILE *f, arena *a, sized_buf *k, sized_buf *v,
         v->buf = NULL;
     }
 
-    if (fread(k->buf, k->size, 1, f) != 1) {
-        return FILE_MERGER_ERROR_FILE_READ;
-    }
-
-    if (v->size && fread(v->buf, v->size, 1, f) != 1) {
-        return FILE_MERGER_ERROR_FILE_READ;
-    }
+    read_from_file_buffer(k->buf, k->size, &filebuf);
+    read_from_file_buffer(v->buf, v->size, &filebuf);
 
     return len;
 }
@@ -1261,6 +1263,7 @@ static couchstore_error_t update_btree(const char *source_file,
     rq.guided_purge_ctx = purge_ctx;
     rq.enable_purging = 1;
     rq.user_reduce_ctx = red_ctx;
+    //rq.fetch_callback = NULL;
 
     /* If cleanup bitmask is empty, no need to try purging */
     if (is_equal_bitmap(&empty_bm, &purge_ctx->cbitmask)) {
@@ -1273,13 +1276,21 @@ static couchstore_error_t update_btree(const char *source_file,
         goto cleanup;
     }
 
+    sized_buf data_buffer;
+    data_buffer.buf = NULL;
+    data_buffer.size = 0;
+
+    view_file_compression_buffer_t buffer;
+    buffer.buffer = data_buffer;
+    buffer.offset = 0;
+    buffer.file = f;
+
     while (!last_record) {
         int read_ret;
         uint8_t op;
 
         read_ret = read_record(f, transient_arena, &keybufs[rq.num_actions],
-                                                   &valbufs[rq.num_actions],
-                                                   &op);
+                               &valbufs[rq.num_actions], &op, &buffer);
         if (read_ret == 0) {
             last_record = 1;
             goto flush;

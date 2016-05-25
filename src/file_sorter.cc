@@ -627,10 +627,10 @@ static file_sorter_error_t write_record_list(void **records,
         return FILE_SORTER_ERROR_NOT_EMPTY_TMP_FILE;
     }
 
-
     for (i = 0; i < n; i++) {
         file_sorter_error_t err;
-        err = static_cast<file_sorter_error_t>((*ctx->write_record)(f, records[i], ctx->user_ctx));
+        err = static_cast<file_sorter_error_t>((*ctx->write_record)(
+            f, records[i], i + 1 == n, ctx->user_ctx));
         (*ctx->free_record)(records[i], ctx->user_ctx);
         records[i] = NULL;
 

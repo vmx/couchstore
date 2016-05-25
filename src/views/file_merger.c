@@ -18,6 +18,8 @@
  * the License.
  **/
 
+#include <stdlib.h>
+
 #include "config.h"
 #include "util.h"
 #include "file_merger.h"
@@ -91,8 +93,20 @@ static file_merger_error_t merge_view_files(const char *source_files[],
                                             const char *dest_path,
                                             view_file_merge_ctx_t *ctx)
 {
-    return merge_files(source_files, num_source_files, dest_path,
-                       read_view_record, write_view_record, NULL,
-                       compare_view_records, dedup_view_records_merger,
-                       free_view_record, 0, ctx);
+    file_merger_error_t status;
+    /* The number of buffers is dynamic, hence allocated in the
+       record read/write function. Free the allocation when done */
+    ctx->buffers = NULL;
+    ctx->num_buffers = 0;
+
+    status = merge_files(source_files, num_source_files, dest_path,
+                         read_view_record, write_view_record, NULL,
+                         compare_view_records, dedup_view_records_merger,
+                         free_view_record, 0, ctx);
+
+    free(ctx->buffers);
+    ctx->buffers = NULL;
+    ctx->num_buffers = 0;
+
+    return status;
 }

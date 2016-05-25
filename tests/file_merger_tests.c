@@ -51,8 +51,10 @@ static int read_record(FILE *f, void **buffer, void *ctx)
     return sizeof(int);
 }
 
-static file_merger_error_t write_record(FILE *f, void *buffer, void *ctx)
+static file_merger_error_t write_record(FILE *f, void *buffer,
+                                        bool last_recod, void *ctx)
 {
+    (void) last_recod;
     (void) ctx;
 
     if (fwrite(buffer, sizeof(int), 1, f) != 1) {

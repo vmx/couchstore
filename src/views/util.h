@@ -50,12 +50,26 @@ extern "C" {
     };
 
     typedef struct {
+        /* A buffercontains one batch of records
+           that get/got compressed into one chunk */
+        sized_buf buffer;
+        /* The offset is the current fill grade */
+        uint32_t offset;
+        /* Pointer to input file to know to which file the buffer belongs to */
+        FILE *file;
+    } view_file_compression_buffer_t;
+
+    typedef struct {
         FILE *src_f;
         FILE *dst_f;
         enum view_record_type type;
         int (*key_cmp_fun)(const sized_buf *key1, const sized_buf *key2,
                            const void *user_ctx);
         const void *user_ctx;
+        /* These buffers (one for each file) contains one batch of records
+           that get/got compressed into one chunk */
+        view_file_compression_buffer_t *buffers;
+        size_t num_buffers;
     } view_file_merge_ctx_t;
 
     /* compare keys of a view btree */
@@ -72,7 +86,8 @@ extern "C" {
 
     /* write view index record from a file, obbeys the write record function
        prototype defined in src/file_merger.h */
-    file_merger_error_t write_view_record(FILE *out, void *buf, void *ctx);
+    file_merger_error_t write_view_record(FILE *out, void *buf,
+                                          bool last_record, void *ctx);
 
     /* compare 2 view index records, obbeys the record compare function
        prototype defined in src/file_merger.h */
@@ -97,6 +112,17 @@ extern "C" {
                         const char *red_error,
                         couchstore_error_t ret,
                         view_error_t *error_info);
+
+    /* Fill the buffer from the contents of a file.
+       It returns either a file_merger_error_t or a value > 0 if
+       the buffer was succesfully filled */
+    int fill_file_buffer(view_file_compression_buffer_t **filebuf);
+
+    void read_from_file_buffer(void *dest,
+                               size_t size,
+                               view_file_compression_buffer_t **filebuf);
+
+    void free_file_buffer(view_file_compression_buffer_t **filebuf);
 
 #ifdef __cplusplus
 }

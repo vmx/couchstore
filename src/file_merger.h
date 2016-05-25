@@ -61,6 +61,7 @@ extern "C" {
      */
     typedef file_merger_error_t (*file_merger_write_record_t)(FILE *f,
                                                               void *record_buffer,
+                                                              bool last_record,
                                                               void *user_ctx);
 
     /*

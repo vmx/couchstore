@@ -18,6 +18,8 @@
  * the License.
  **/
 
+#include <stdlib.h>
+
 #include "file_sorter.h"
 #include "util.h"
 #include "spatial.h"
@@ -124,15 +126,27 @@ static file_sorter_error_t do_sort_file(const char *file_path,
                                         int skip_writeback,
                                         view_file_merge_ctx_t *ctx)
 {
-    return sort_file(file_path,
-                     tmp_dir,
-                     SORT_MAX_NUM_TMP_FILES,
-                     SORT_MAX_BUFFER_SIZE,
-                     read_view_record,
-                     write_view_record,
-                     callback,
-                     compare_view_records,
-                     free_view_record,
-                     skip_writeback,
-                     ctx);
+    file_sorter_error_t status;
+    /* The number of buffers is dynamic, hence allocated in the
+       record read/write function. Free the allocation when done */
+    ctx->buffers = NULL;
+    ctx->num_buffers = 0;
+
+    status = sort_file(file_path,
+                       tmp_dir,
+                       SORT_MAX_NUM_TMP_FILES,
+                       SORT_MAX_BUFFER_SIZE,
+                       read_view_record,
+                       write_view_record,
+                       callback,
+                       compare_view_records,
+                       free_view_record,
+                       skip_writeback,
+                       ctx);
+
+    free(ctx->buffers);
+    ctx->buffers = NULL;
+    ctx->num_buffers = 0;
+
+    return status;
 }
